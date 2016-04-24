@@ -9,12 +9,23 @@ import (
 	"fmt"
 	"strconv"
 	"flag"
+	"log"
+	"runtime"
+	"net/http"
+	"runtime/pprof"
+	"runtime/debug"
 )
 
 var customerFile = "customer.csv"
 var orderFile = "order.csv"
 
 var customer_id = flag.Int("customer_id", 0, "")
+
+var cpuprofile = flag.String("cpuprofile", "cpu.out", "")
+var memprofile = flag.String("memprofile", "mem.out", "")
+var blockprofile = flag.String("blockprofile", "block.out", "")
+var goroutineprofile = flag.String("goroutineprofile", "goroutin.out", "")
+var heapdumpfile = flag.String("heapdumpfile", "heapdump.out", "")
 
 type monOrderCount struct {
 	count int
@@ -57,9 +68,83 @@ func toDateKey(str string) int {
 	return dateYear * 12 + dateMon
 }
 
+func prof() {
+
+	//CPU追踪
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		} else {
+			log.Println("start cpu write heap profile....")
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
+	//内存追踪
+	if *memprofile != "" {
+		var err error
+		memFile, err := os.Create(*memprofile)
+		if err != nil {
+			log.Println(err)
+		} else {
+			log.Println("start mem write heap profile....")
+			pprof.WriteHeapProfile(memFile)
+			defer memFile.Close()
+		}
+	}
+
+	//协程堵塞追踪
+	if *blockprofile != "" {
+		blockFile, err := os.Create(*blockprofile)
+		if err != nil {
+			log.Println(err)
+		} else {
+			log.Println("start block write heap profile....")
+			runtime.SetBlockProfileRate(1)
+			defer pprof.Lookup("block").WriteTo(blockFile, 0)
+		}
+	}
+
+	//协程运行数
+	if *goroutineprofile != "" {
+		goFile, err := os.Create(*goroutineprofile)
+		if err != nil {
+			log.Println(err)
+		} else {
+			log.Println("start goroutine write heap profile....")
+
+			pprof.Lookup("goroutine").WriteTo(goFile, 0)
+			defer goFile.Close()
+		}
+	}
+
+	//堆倾卸器
+	if *heapdumpfile != "" {
+		heapFile, err := os.Create(*heapdumpfile)
+		if err != nil {
+			log.Println(err)
+		} else {
+			log.Println("start heapdump write heap profile....")
+
+			debug.WriteHeapDump(heapFile.Fd())
+			defer heapFile.Close()
+		}
+	}
+	
+}
+
 func main() {
 
+	//http://127.0.0.1:6060/debug/pprof/
+	go func() {
+		runtime.SetBlockProfileRate(1)
+		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
+	}()
+
 	flag.Parse()
+	prof()
 
 	fmt.Println(*customer_id)
 
@@ -114,22 +199,33 @@ func main() {
 	orderCount := 0
 
 
-	ReadLine(orderFile, func(str string) {
-		orderCount++
-		date := strings.Split(str, ",")
-		if len(date) == 5 {
-			customerId, _ := strconv.Atoi(date[1])
-			dateKey := toDateKey(date[4])
+	for {
+		if orderCount > 10000000 {
+			break
+		}
 
-			if _, ok := customerDates.dates[customerId]; ok {
-				if monData := customerDates.dates[customerId].orderCounts[dateKey]; monData == nil {
-					//  error
-				} else {
-					customerDates.dates[customerId].orderCounts[dateKey].count++
+		ReadLine(orderFile, func(str string) {
+			if orderCount % 1000000 == 0 {
+				log.Println(orderCount)
+			}
+			orderCount++
+			date := strings.Split(str, ",")
+			if len(date) == 5 {
+				customerId, _ := strconv.Atoi(date[1])
+				dateKey := toDateKey(date[4])
+
+				if _, ok := customerDates.dates[customerId]; ok {
+					if monData := customerDates.dates[customerId].orderCounts[dateKey]; monData == nil {
+						//  error
+					} else {
+						customerDates.dates[customerId].orderCounts[dateKey].count++
+					}
 				}
 			}
-		}
-	})
+		})
+
+
+	}
 
 	for _, customer := range customerDates.dates {
 		startKey := customer.createDateKey
@@ -180,6 +276,7 @@ func ReadLine(fileName string, handler func(string)) error {
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 	buf := bufio.NewReader(f)
 	for {
 		line, err := buf.ReadString('\n')
