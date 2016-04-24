@@ -148,21 +148,28 @@ func main() {
 	flag.Parse()
 	prof()
 
+	countMain()
+	runtime.GC()
+	out := make(chan struct{})
+	<- out
+}
+
+func countMain() {
 	fmt.Println(*customer_id)
 
 	t1 := time.Now();
 
-	customerDates := customerDates{}
-	customerDates.dates = map[int]*customerDate{}
+	customerDatesObj := customerDates{}
+	customerDatesObj.dates = map[int]*customerDate{}
 
 	nowDateKey := 2016 * 12 + 4
 
-	countCustomer(nowDateKey, customerDates)
-	countOrder(customerDates)
-	analysisDate(customerDates)
+	countCustomer(nowDateKey, customerDatesObj)
+	countOrder(customerDatesObj)
+	analysisDate(customerDatesObj)
 
-	fmt.Println(customerDates.dates[*customer_id])
-	fmt.Println(len(customerDates.dates))
+	fmt.Println(customerDatesObj.dates[*customer_id])
+	fmt.Println(len(customerDatesObj.dates))
 	fmt.Println(orderCount)
 	fmt.Println(time.Now().Sub(t1))
 }
