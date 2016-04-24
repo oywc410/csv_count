@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"runtime/pprof"
 	"runtime/debug"
+	_ "net/http/pprof"
 )
 
 var customerFile = "customer.csv"
@@ -21,11 +22,13 @@ var orderFile = "order.csv"
 
 var customer_id = flag.Int("customer_id", 0, "")
 
-var cpuprofile = flag.String("cpuprofile", "cpu.out", "")
-var memprofile = flag.String("memprofile", "mem.out", "")
-var blockprofile = flag.String("blockprofile", "block.out", "")
-var goroutineprofile = flag.String("goroutineprofile", "goroutin.out", "")
-var heapdumpfile = flag.String("heapdumpfile", "heapdump.out", "")
+var cpuprofile = flag.String("cpuprofile", "cpu.out", "cpu.out")
+var memprofile = flag.String("memprofile", "mem.out", "mem.out")
+var blockprofile = flag.String("blockprofile", "block.out", "block.out")
+var goroutineprofile = flag.String("goroutineprofile", "goroutin.out", "goroutin.out")
+var heapdumpfile = flag.String("heapdumpfile", "heapdump.out", "heapdump.out")
+
+var orderCount = 0
 
 type monOrderCount struct {
 	count int
@@ -34,6 +37,7 @@ type monOrderCount struct {
 	b int
 	c int
 	rank int
+	orderId string
 }
 
 type customerDate struct {
@@ -49,7 +53,6 @@ type customerDates struct {
 
 func (c customerDate) String() string {
 	str := ""
-
 
 	if len(c.orderCounts) == 0 {
 		return str
@@ -136,7 +139,6 @@ func prof() {
 }
 
 func main() {
-
 	//http://127.0.0.1:6060/debug/pprof/
 	go func() {
 		runtime.SetBlockProfileRate(1)
@@ -155,6 +157,17 @@ func main() {
 
 	nowDateKey := 2016 * 12 + 4
 
+	countCustomer(nowDateKey, customerDates)
+	countOrder(customerDates)
+	analysisDate(customerDates)
+
+	fmt.Println(customerDates.dates[*customer_id])
+	fmt.Println(len(customerDates.dates))
+	fmt.Println(orderCount)
+	fmt.Println(time.Now().Sub(t1))
+}
+
+func countCustomer(nowDateKey int, customerDates customerDates) {
 	ReadLine(customerFile, func(str string) {
 
 		date := strings.Split(str, ",")
@@ -196,44 +209,48 @@ func main() {
 			}
 		}
 	})
-	orderCount := 0
+}
 
-
-
+func countOrder(customerDates customerDates) {
 	ReadLine(orderFile, func(str string) {
-		if orderCount % 1000000 == 0 {
-			log.Println(orderCount)
-		}
 		orderCount++
 		date := strings.Split(str, ",")
 		if len(date) == 5 {
+
 			customerId, _ := strconv.Atoi(date[1])
 			dateKey := toDateKey(date[4])
 
-			if _, ok := customerDates.dates[customerId]; ok {
-				if monData := customerDates.dates[customerId].orderCounts[dateKey]; monData == nil {
+			if dates, ok := customerDates.dates[customerId]; ok {
+				if monData := dates.orderCounts[dateKey]; monData == nil {
 					//  error
 				} else {
-					customerDates.dates[customerId].orderCounts[dateKey].count++
+					//customerDates.dates[customerId].orderCounts[dateKey].orderId += date[1]
+					monData.count++
 				}
 			}
 		}
 	})
 
+}
 
+func analysisDate(customerDates customerDates) {
 	for _, customer := range customerDates.dates {
 		startKey := customer.createDateKey
 		stopKey := customer.endDateKey
 		monCount := customer.orderCounts
 
 		a ,b ,c := 0, 0, 0
+		editA := 0
+		editB := 0
 
 		for {
 			a += getCount(monCount, startKey)
-			a -= getCount(monCount, startKey - 12)
-			b += getCount(monCount, startKey - 12)
-			b -= getCount(monCount, startKey - 24)
-			c += getCount(monCount, startKey - 24)
+			editA = getCount(monCount, startKey - 12)
+			a -= editA
+			b += editA
+			editB = getCount(monCount, startKey - 24)
+			b -= editB
+			c += editB
 			c -= getCount(monCount, startKey - 36)
 
 			monCount[startKey].a = a
@@ -246,12 +263,6 @@ func main() {
 			}
 		}
 	}
-
-
-	fmt.Println(customerDates.dates[*customer_id])
-	fmt.Println(len(customerDates.dates))
-	fmt.Println(orderCount)
-	fmt.Println(time.Now().Sub(t1))
 }
 
 func getCount(dateMap map[int]*monOrderCount, dateKey int) int {
