@@ -199,33 +199,27 @@ func main() {
 	orderCount := 0
 
 
-	for {
-		if orderCount > 10000000 {
-			break
+
+	ReadLine(orderFile, func(str string) {
+		if orderCount % 1000000 == 0 {
+			log.Println(orderCount)
 		}
+		orderCount++
+		date := strings.Split(str, ",")
+		if len(date) == 5 {
+			customerId, _ := strconv.Atoi(date[1])
+			dateKey := toDateKey(date[4])
 
-		ReadLine(orderFile, func(str string) {
-			if orderCount % 1000000 == 0 {
-				log.Println(orderCount)
-			}
-			orderCount++
-			date := strings.Split(str, ",")
-			if len(date) == 5 {
-				customerId, _ := strconv.Atoi(date[1])
-				dateKey := toDateKey(date[4])
-
-				if _, ok := customerDates.dates[customerId]; ok {
-					if monData := customerDates.dates[customerId].orderCounts[dateKey]; monData == nil {
-						//  error
-					} else {
-						customerDates.dates[customerId].orderCounts[dateKey].count++
-					}
+			if _, ok := customerDates.dates[customerId]; ok {
+				if monData := customerDates.dates[customerId].orderCounts[dateKey]; monData == nil {
+					//  error
+				} else {
+					customerDates.dates[customerId].orderCounts[dateKey].count++
 				}
 			}
-		})
+		}
+	})
 
-
-	}
 
 	for _, customer := range customerDates.dates {
 		startKey := customer.createDateKey
